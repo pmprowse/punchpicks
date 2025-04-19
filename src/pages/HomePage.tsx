@@ -57,7 +57,7 @@ const HomePage: React.FC = () => {
               Login below to make your picks
             </p>
             <div className="mt-8 max-w-md mx-auto">
-              <Login onLoginSuccess={() => {}} />
+              <Login />
             </div>
           </>
         )}
