@@ -2,17 +2,29 @@
 import React, { useState, useEffect } from "react";
 import { Link, useLocation } from "react-router-dom";
 import { fightCards } from "../data/fights";
+import { upcomingEvents } from "../data/events";
 import { FightCard, Fight } from "../types/Fight";
+import { PicksService } from "../services/PicksService";
+import { TimeService } from "../services/TimeService";
+import { useAuth } from "../context/AuthContext";
 
 const FightCardPage: React.FC = () => {
   // State to track user's picks
   const [picks, setPicks] = useState<Record<string, Pick>>({});
   const [mainCard, setMainCard] = useState<FightCard | null>(null);
   const [prelimCard, setPrelimCard] = useState<FightCard | null>(null);
+  const [hasExistingPicks, setHasExistingPicks] = useState(false);
+
+  // Time-related states
+  const [canSubmitPicks, setCanSubmitPicks] = useState(true);
+  const [timeRemaining, setTimeRemaining] = useState("");
 
   // Get the event ID from navigation state
   const location = useLocation();
   const eventId = location.state?.eventId;
+
+  // Get current user from auth context
+  const { user } = useAuth();
 
   // Load the correct fight cards when component mounts
   useEffect(() => {
@@ -27,16 +39,53 @@ const FightCardPage: React.FC = () => {
       if (fightCards[prelimKey]) {
         setPrelimCard(fightCards[prelimKey]);
       }
-    }
-  }, [eventId]);
 
-  // If no event is selected, show an error or redirect
-  if (!mainCard) {
+      // Check for existing picks
+      if (user) {
+        const existingPicks = PicksService.getPicks(user.username, eventId);
+        if (existingPicks) {
+          setPicks(existingPicks.picks);
+          setHasExistingPicks(true);
+        }
+      }
+
+      // Check event time and set pick submission status
+      const event = upcomingEvents.find((e) => e.id === eventId);
+      if (event) {
+        // Initial check
+        const canSubmit = TimeService.canSubmitPicks(event);
+        setCanSubmitPicks(canSubmit);
+
+        // Update time remaining
+        const updateTimeRemaining = () => {
+          const remaining = TimeService.getTimeUntilPicksLock(event);
+          setTimeRemaining(remaining);
+
+          // Stop interval if picks are locked
+          if (remaining === "Picks Locked") {
+            setCanSubmitPicks(false);
+          }
+        };
+
+        // Initial update
+        updateTimeRemaining();
+
+        // Set up interval to update time remaining
+        const timerId = setInterval(updateTimeRemaining, 60000); // Update every minute
+
+        // Clean up interval
+        return () => clearInterval(timerId);
+      }
+    }
+  }, [eventId, user]);
+
+  // If no event or user is selected, show an error
+  if (!mainCard || !user) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-blue-50 to-indigo-100">
         <div className="text-center">
           <h1 className="text-3xl font-bold text-gray-900 mb-4">
-            No Event Selected
+            {!mainCard ? "No Event Selected" : "Please Log In"}
           </h1>
           <Link
             to="/events"
@@ -51,26 +100,28 @@ const FightCardPage: React.FC = () => {
 
   // Handle fighter selection
   const handleFighterSelect = (fightId: string, fighterId: string) => {
+    if (!canSubmitPicks) return;
+
     setPicks({
       ...picks,
       [fightId]: {
         fighterId,
-        method: picks[fightId]?.method || null,
+        method: picks[fightId]?.method || "",
       },
     });
   };
 
   // Handle method selection
   const handleMethodSelect = (fightId: string, method: string) => {
-    if (picks[fightId]?.fighterId) {
-      setPicks({
-        ...picks,
-        [fightId]: {
-          ...picks[fightId],
-          method,
-        },
-      });
-    }
+    if (!canSubmitPicks || !picks[fightId]?.fighterId) return;
+
+    setPicks({
+      ...picks,
+      [fightId]: {
+        ...picks[fightId],
+        method,
+      },
+    });
   };
 
   // Check if fighter is selected
@@ -96,6 +147,14 @@ const FightCardPage: React.FC = () => {
     return { completedPicks, totalFights };
   };
 
+  // Handle submission of picks
+  const handleSubmitPicks = () => {
+    if (!canSubmitPicks || !user || !eventId) return;
+
+    PicksService.savePicks(user.username, eventId, picks);
+    setHasExistingPicks(true);
+  };
+
   const { completedPicks, totalFights } = calculateCompletionStatus();
 
   // Render fight card section
@@ -111,7 +170,9 @@ const FightCardPage: React.FC = () => {
         {card.fights.map((fight) => (
           <div
             key={fight.id}
-            className="bg-white rounded-lg shadow-md p-6 border border-gray-200"
+            className={`bg-white rounded-lg shadow-md p-6 border border-gray-200 ${
+              !canSubmitPicks ? "opacity-50" : ""
+            }`}
           >
             <div className="text-lg font-medium text-gray-600 mb-4">
               {fight.weightClass}
@@ -123,8 +184,9 @@ const FightCardPage: React.FC = () => {
                   isFighterSelected(fight.id, fight.fighter1.id)
                     ? "bg-indigo-600 text-white"
                     : "bg-white text-gray-900 hover:bg-gray-100"
-                }`}
+                } ${!canSubmitPicks ? "cursor-not-allowed" : ""}`}
                 onClick={() => handleFighterSelect(fight.id, fight.fighter1.id)}
+                disabled={!canSubmitPicks}
               >
                 {fight.fighter1.name}
               </button>
@@ -134,8 +196,9 @@ const FightCardPage: React.FC = () => {
                   isFighterSelected(fight.id, fight.fighter2.id)
                     ? "bg-indigo-600 text-white"
                     : "bg-white text-gray-900 hover:bg-gray-100"
-                }`}
+                } ${!canSubmitPicks ? "cursor-not-allowed" : ""}`}
                 onClick={() => handleFighterSelect(fight.id, fight.fighter2.id)}
+                disabled={!canSubmitPicks}
               >
                 {fight.fighter2.name}
               </button>
@@ -143,7 +206,9 @@ const FightCardPage: React.FC = () => {
 
             <div className="mt-6">
               <p className="text-sm text-gray-500 mb-2 text-center">
-                {picks[fight.id]?.fighterId
+                {!canSubmitPicks
+                  ? "Picks Locked"
+                  : picks[fight.id]?.fighterId
                   ? "How will they win?"
                   : "Select a fighter first"}
               </p>
@@ -155,12 +220,12 @@ const FightCardPage: React.FC = () => {
                       ? "bg-indigo-600 text-white"
                       : "bg-white text-gray-700 hover:bg-gray-50"
                   } ${
-                    !picks[fight.id]?.fighterId
+                    !picks[fight.id]?.fighterId || !canSubmitPicks
                       ? "opacity-50 cursor-not-allowed"
                       : ""
                   }`}
                   onClick={() => handleMethodSelect(fight.id, "KO")}
-                  disabled={!picks[fight.id]?.fighterId}
+                  disabled={!picks[fight.id]?.fighterId || !canSubmitPicks}
                 >
                   KO
                 </button>
@@ -171,12 +236,12 @@ const FightCardPage: React.FC = () => {
                       ? "bg-indigo-600 text-white"
                       : "bg-white text-gray-700 hover:bg-gray-50"
                   } ${
-                    !picks[fight.id]?.fighterId
+                    !picks[fight.id]?.fighterId || !canSubmitPicks
                       ? "opacity-50 cursor-not-allowed"
                       : ""
                   }`}
                   onClick={() => handleMethodSelect(fight.id, "SUB")}
-                  disabled={!picks[fight.id]?.fighterId}
+                  disabled={!picks[fight.id]?.fighterId || !canSubmitPicks}
                 >
                   SUB
                 </button>
@@ -187,12 +252,12 @@ const FightCardPage: React.FC = () => {
                       ? "bg-indigo-600 text-white"
                       : "bg-white text-gray-700 hover:bg-gray-50"
                   } ${
-                    !picks[fight.id]?.fighterId
+                    !picks[fight.id]?.fighterId || !canSubmitPicks
                       ? "opacity-50 cursor-not-allowed"
                       : ""
                   }`}
                   onClick={() => handleMethodSelect(fight.id, "PTS")}
-                  disabled={!picks[fight.id]?.fighterId}
+                  disabled={!picks[fight.id]?.fighterId || !canSubmitPicks}
                 >
                   PTS
                 </button>
@@ -217,6 +282,13 @@ const FightCardPage: React.FC = () => {
           <h1 className="text-4xl font-extrabold text-gray-900">Punch Picks</h1>
         </div>
 
+        {/* Time Remaining Display */}
+        {canSubmitPicks && (
+          <div className="text-center mb-4 text-gray-600">
+            Time until picks lock: {timeRemaining}
+          </div>
+        )}
+
         <div className="mb-6 text-gray-600 text-center">
           {completedPicks}/{totalFights} picks completed
         </div>
@@ -235,13 +307,18 @@ const FightCardPage: React.FC = () => {
         <div className="mt-8 flex justify-center">
           <button
             className={`${
-              completedPicks === totalFights
+              completedPicks === totalFights && canSubmitPicks
                 ? "bg-indigo-600 hover:bg-indigo-700"
                 : "bg-gray-400 cursor-not-allowed"
             } text-white font-bold py-3 px-8 rounded-lg text-lg shadow-lg transition duration-300`}
-            disabled={completedPicks !== totalFights}
+            disabled={completedPicks !== totalFights || !canSubmitPicks}
+            onClick={handleSubmitPicks}
           >
-            Submit Picks
+            {canSubmitPicks
+              ? hasExistingPicks
+                ? "Update Picks"
+                : "Submit Picks"
+              : "Picks Locked"}
           </button>
         </div>
       </div>
@@ -254,5 +331,5 @@ export default FightCardPage;
 // Type for picks to satisfy TypeScript
 interface Pick {
   fighterId: string;
-  method: string | null;
+  method: string;
 }
