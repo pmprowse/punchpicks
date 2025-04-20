@@ -1,12 +1,13 @@
 // src/pages/HomePage.tsx
 import React, { useState } from "react";
-import { Link } from "react-router-dom";
+import { useNavigate } from "react-router-dom";
 import Login from "../components/Login/Login";
 import { useAuth } from "../context/AuthContext";
 
 const HomePage: React.FC = () => {
   const [isHovered, setIsHovered] = useState(false);
   const { isAuthenticated, logout } = useAuth();
+  const navigate = useNavigate();
 
   return (
     <div className="min-h-screen flex flex-col items-center justify-center bg-gradient-to-br from-blue-50 to-indigo-100">
@@ -17,21 +18,20 @@ const HomePage: React.FC = () => {
       >
         {isAuthenticated ? (
           <>
-            <Link to="/fights">
-              <h1
-                className={`text-6xl sm:text-7xl md:text-8xl font-extrabold tracking-tight transition-all duration-500 ${
-                  isHovered ? "text-indigo-600 scale-105" : "text-gray-900"
-                } cursor-pointer`}
-              >
-                Punch Picks
-              </h1>
-            </Link>
+            <button
+              onClick={() => navigate("/events")}
+              className={`text-6xl sm:text-7xl md:text-8xl font-extrabold tracking-tight transition-all duration-500 ${
+                isHovered ? "text-indigo-600 scale-105" : "text-gray-900"
+              } cursor-pointer`}
+            >
+              Punch Picks
+            </button>
             <p
               className={`mt-4 text-xl transition-all duration-500 ${
                 isHovered ? "text-indigo-500" : "text-gray-600"
               }`}
             >
-              Click the title to make your fight predictions
+              Click the title to view events
             </p>
             <button
               onClick={logout}
