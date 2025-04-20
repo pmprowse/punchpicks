@@ -5,10 +5,13 @@ import React, {
   useEffect,
   ReactNode,
 } from "react";
+import * as AuthService from "../services/AuthService";
+import { User } from "../data/users";
 
 // Define the shape of our context
 interface AuthContextType {
   isAuthenticated: boolean;
+  user: Omit<User, "password"> | null;
   login: (
     username: string,
     password: string,
@@ -22,6 +25,7 @@ interface AuthContextType {
 // Create the context with a default value
 const AuthContext = createContext<AuthContextType>({
   isAuthenticated: false,
+  user: null,
   login: async () => {},
   logout: () => {},
   isLoading: false,
@@ -36,19 +40,24 @@ interface AuthProviderProps {
 // Create the AuthProvider component
 export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
   const [isAuthenticated, setIsAuthenticated] = useState<boolean>(false);
+  const [user, setUser] = useState<Omit<User, "password"> | null>(null);
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
 
   // Check if a token exists when the app loads
   useEffect(() => {
-    const checkAuth = () => {
-      const token =
-        localStorage.getItem("authToken") ||
-        sessionStorage.getItem("authToken");
+    const checkAuth = async () => {
+      const token = AuthService.getToken();
       if (token) {
-        // Here you would typically validate the token with your backend
-        // For now, we'll just set isAuthenticated to true if a token exists
-        setIsAuthenticated(true);
+        try {
+          const isValid = await AuthService.verifyToken(token);
+          if (isValid) {
+            // TODO: Implement user retrieval based on token
+            setIsAuthenticated(true);
+          }
+        } catch {
+          AuthService.removeToken();
+        }
       }
     };
 
@@ -65,25 +74,17 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     setError(null);
 
     try {
-      // TODO: Replace with actual API call
-      // This is a mock authentication - replace with your actual auth logic
-      await new Promise((resolve) => setTimeout(resolve, 1000)); // Simulate API delay
+      const { user: loggedInUser, token } = await AuthService.login({
+        username,
+        password,
+      });
 
-      // Mock validation - replace with actual auth logic
-      if (username === "demo" && password === "password") {
-        const token = "mock-jwt-token";
+      // Store token based on remember me preference
+      AuthService.saveToken(token, rememberMe);
 
-        // Store token based on remember me preference
-        if (rememberMe) {
-          localStorage.setItem("authToken", token);
-        } else {
-          sessionStorage.setItem("authToken", token);
-        }
-
-        setIsAuthenticated(true);
-      } else {
-        throw new Error("Invalid credentials");
-      }
+      // Set user and authentication state
+      setUser(loggedInUser);
+      setIsAuthenticated(true);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Login failed");
       throw err;
@@ -94,14 +95,15 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
 
   // Logout function
   const logout = () => {
-    localStorage.removeItem("authToken");
-    sessionStorage.removeItem("authToken");
+    AuthService.removeToken();
     setIsAuthenticated(false);
+    setUser(null);
   };
 
   // Provide the context value
   const value = {
     isAuthenticated,
+    user,
     login,
     logout,
     isLoading,
