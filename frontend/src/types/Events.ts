@@ -9,4 +9,5 @@ export interface Event {
     fighter1: string;
     fighter2: string;
   };
+  title: string; // Add the title field
 }
