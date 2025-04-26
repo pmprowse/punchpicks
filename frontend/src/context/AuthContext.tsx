@@ -1,3 +1,4 @@
+// src/context/AuthContext.tsx
 import React, {
   createContext,
   useState,
@@ -6,17 +7,12 @@ import React, {
   ReactNode,
 } from "react";
 import * as AuthService from "../services/AuthService";
-import { User } from "../data/users";
 
 // Define the shape of our context
 interface AuthContextType {
   isAuthenticated: boolean;
-  user: Omit<User, "password"> | null;
-  login: (
-    username: string,
-    password: string,
-    rememberMe: boolean
-  ) => Promise<void>;
+  user: any | null;
+  login: (username: string, password: string) => Promise<void>;
   logout: () => void;
   isLoading: boolean;
   error: string | null;
@@ -40,50 +36,40 @@ interface AuthProviderProps {
 // Create the AuthProvider component
 export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
   const [isAuthenticated, setIsAuthenticated] = useState<boolean>(false);
-  const [user, setUser] = useState<Omit<User, "password"> | null>(null);
+  const [user, setUser] = useState<any | null>(null);
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
 
-  // Check if a token exists when the app loads
+  // Check if user is authenticated when the app loads
   useEffect(() => {
-    const checkAuth = async () => {
-      const token = AuthService.getToken();
-      if (token) {
-        try {
-          const isValid = await AuthService.verifyToken(token);
-          if (isValid) {
-            // TODO: Implement user retrieval based on token
-            setIsAuthenticated(true);
-          }
-        } catch {
-          AuthService.removeToken();
+    const checkAuthentication = async () => {
+      try {
+        const user = await AuthService.checkAuth();
+        if (user) {
+          setUser(user);
+          setIsAuthenticated(true);
         }
+      } catch (error) {
+        console.error("Auth check error:", error);
       }
     };
 
-    checkAuth();
+    checkAuthentication();
   }, []);
 
   // Login function
-  const login = async (
-    username: string,
-    password: string,
-    rememberMe: boolean
-  ) => {
+  const login = async (username: string, password: string) => {
     setIsLoading(true);
     setError(null);
 
     try {
-      const { user: loggedInUser, token } = await AuthService.login({
+      const { user } = await AuthService.login({
         username,
         password,
       });
 
-      // Store token based on remember me preference
-      AuthService.saveToken(token, rememberMe);
-
       // Set user and authentication state
-      setUser(loggedInUser);
+      setUser(user);
       setIsAuthenticated(true);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Login failed");
@@ -94,8 +80,8 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
   };
 
   // Logout function
-  const logout = () => {
-    AuthService.removeToken();
+  const logout = async () => {
+    await AuthService.logout();
     setIsAuthenticated(false);
     setUser(null);
   };

@@ -1,5 +1,6 @@
 # routers/auth.py
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status, Response, Cookie, Request
+from fastapi.security import OAuth2PasswordBearer
 from sqlalchemy.orm import Session
 from pydantic import BaseModel
 from passlib.context import CryptContext
@@ -60,9 +61,32 @@ def register_user(user: UserCreate, db: Session = Depends(get_db)):
     db.refresh(db_user)
     return db_user
 
-# Login endpoint
+# Get current user endpoint
+@router.get("/me", response_model=UserResponse)
+def get_current_user(request: Request, db: Session = Depends(get_db)):
+    # Get session cookie
+    session_id = request.cookies.get("session")
+    if not session_id:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+    
+    # Find user by session ID (you would typically use a session store)
+    # This is a simplified example - you may need to adapt this to your session management
+    user = db.query(models.User).filter(models.User.username == session_id).first()
+    if not user:
+        raise HTTPException(status_code=401, detail="Invalid session")
+    
+    return user
+
+# Logout endpoint
+@router.post("/logout")
+def logout(response: Response):
+    # Clear the session cookie
+    response.delete_cookie(key="session")
+    return {"message": "Logged out successfully"}
+
+# Update your login endpoint to set a cookie
 @router.post("/login", response_model=UserResponse)
-def login_user(user: UserLogin, db: Session = Depends(get_db)):
+def login_user(user: UserLogin, response: Response, db: Session = Depends(get_db)):
     # Find user by username
     db_user = get_user_by_username(db, user.username)
     if not db_user:
@@ -71,6 +95,17 @@ def login_user(user: UserLogin, db: Session = Depends(get_db)):
     # Verify password
     if not verify_password(user.password, db_user.password_hash):
         raise HTTPException(status_code=401, detail="Invalid username or password")
+    
+    # Set a simple session cookie with the username
+    # In a real app, you'd use a secure, random session ID
+    response.set_cookie(
+        key="session",
+        value=db_user.username,
+        httponly=True,
+        max_age=1800,  # 30 minutes
+        samesite="lax",
+        secure=False,  # Set to True in production with HTTPS
+    )
     
     # Return user data (without password)
     return db_user

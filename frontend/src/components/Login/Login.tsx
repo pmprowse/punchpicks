@@ -1,3 +1,4 @@
+// src/components/Login/Login.tsx
 import React, { useState } from "react";
 import { useAuth } from "../../context/AuthContext";
 
@@ -9,7 +10,6 @@ const Login: React.FC<LoginProps> = ({ onLoginSuccess }) => {
   // Form state
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
-  const [rememberMe, setRememberMe] = useState(false);
 
   // UI state
   const [success, setSuccess] = useState(false);
@@ -28,7 +28,7 @@ const Login: React.FC<LoginProps> = ({ onLoginSuccess }) => {
 
     try {
       // Use the login function from auth context
-      await login(username, password, rememberMe);
+      await login(username, password);
 
       // Show success message
       setSuccess(true);
@@ -104,20 +104,6 @@ const Login: React.FC<LoginProps> = ({ onLoginSuccess }) => {
               placeholder="Enter your password"
               disabled={isLoading}
             />
-          </div>
-
-          {/* Remember me checkbox */}
-          <div className="mb-6">
-            <label className="flex items-center">
-              <input
-                type="checkbox"
-                checked={rememberMe}
-                onChange={(e) => setRememberMe(e.target.checked)}
-                className="mr-2 leading-tight"
-                disabled={isLoading}
-              />
-              <span className="text-sm text-gray-700">Remember me</span>
-            </label>
           </div>
 
           {/* Submit button */}

@@ -1,76 +1,78 @@
-import { users, User } from "../data/users";
-
-export interface LoginRequest {
+// src/services/AuthService.ts
+interface LoginRequest {
   username: string;
   password: string;
 }
 
-export interface LoginResponse {
-  user: Omit<User, "password">;
-  token: string;
+interface User {
+  username: string;
+  id: number;
+  role?: string;
 }
 
+export interface LoginResponse {
+  user: User;
+}
+
+// Base URL for API requests
+const API_URL = "http://localhost:8000/api";
+
+// Login function - sends credentials to the backend
 export const login = async (
   credentials: LoginRequest
 ): Promise<LoginResponse> => {
-  return new Promise((resolve, reject) => {
-    // Simulate API delay
-    setTimeout(() => {
-      // Find user that matches credentials
-      const user = users.find(
-        (u) =>
-          u.username === credentials.username &&
-          u.password === credentials.password
-      );
+  try {
+    const response = await fetch(`${API_URL}/auth/login`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      // Include credentials to allow cookies to be sent and received
+      credentials: "include",
+      body: JSON.stringify(credentials),
+    });
 
-      if (user) {
-        // Destructure to remove password
-        const { password, ...userWithoutPassword } = user;
+    if (!response.ok) {
+      const errorData = await response.json();
+      throw new Error(errorData.detail || "Login failed");
+    }
 
-        resolve({
-          user: userWithoutPassword,
-          token: `mock-token-${user.username}`,
-        });
-      } else {
-        reject(new Error("Invalid credentials"));
-      }
-    }, 300);
-  });
-};
-
-export const verifyToken = async (token: string): Promise<boolean> => {
-  return new Promise((resolve) => {
-    setTimeout(() => {
-      // Check if token matches any user
-      const isValid = users.some(
-        (user) => token === `mock-token-${user.username}`
-      );
-      resolve(isValid);
-    }, 100);
-  });
-};
-
-export const logout = async (): Promise<void> => {
-  return new Promise((resolve) => {
-    setTimeout(resolve, 100);
-  });
-};
-
-export const getToken = (): string | null => {
-  return (
-    localStorage.getItem("authToken") || sessionStorage.getItem("authToken")
-  );
-};
-
-export const saveToken = (token: string, rememberMe: boolean): void => {
-  if (rememberMe) {
-    localStorage.setItem("authToken", token);
-  } else {
-    sessionStorage.setItem("authToken", token);
+    const data = await response.json();
+    return { user: data };
+  } catch (error) {
+    if (error instanceof Error) {
+      throw error;
+    }
+    throw new Error("An unknown error occurred during login");
   }
 };
 
-export const removeToken = (): void => {
-  localStorage.removeItem("authToken");
-  sessionStorage.removeItem("authToken");
+// Check if user is currently authenticated
+export const checkAuth = async (): Promise<User | null> => {
+  try {
+    const response = await fetch(`${API_URL}/auth/me`, {
+      method: "GET",
+      credentials: "include", // Include cookies
+    });
+
+    if (!response.ok) {
+      return null;
+    }
+
+    return await response.json();
+  } catch (error) {
+    return null;
+  }
+};
+
+// Logout function - clears the session cookie
+export const logout = async (): Promise<void> => {
+  try {
+    await fetch(`${API_URL}/auth/logout`, {
+      method: "POST",
+      credentials: "include", // Include cookies
+    });
+  } catch (error) {
+    console.error("Logout error:", error);
+  }
 };
