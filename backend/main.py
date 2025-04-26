@@ -4,7 +4,7 @@ from sqlalchemy.orm import Session
 
 import models
 from database import engine, get_db
-from routers import fighters, events, fights, import_data, user_picks
+from routers import fighters, events, fights, import_data, user_picks, auth
 
 # Create database tables
 models.Base.metadata.create_all(bind=engine)
@@ -32,6 +32,8 @@ app.include_router(events.router, prefix="/api")
 app.include_router(fights.router, prefix="/api")
 app.include_router(import_data.router, prefix="/api")
 app.include_router(user_picks.router, prefix="/api")
+app.include_router(auth.router, prefix="/api")
+
 
 # Root endpoint
 @app.get("/")
