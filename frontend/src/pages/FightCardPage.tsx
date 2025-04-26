@@ -61,6 +61,11 @@ const FightCardPage: React.FC = () => {
         const canSubmit = TimeService.canSubmitPicks(eventData);
         setCanSubmitPicks(canSubmit);
 
+        // Add your debug logs here
+        console.log("Current time:", new Date().toISOString());
+        console.log("Event start time:", eventData.startTime);
+        console.log("Can submit picks:", TimeService.canSubmitPicks(eventData));
+
         // Update time remaining
         const remaining = TimeService.getTimeUntilPicksLock(eventData);
         setTimeRemaining(remaining);
