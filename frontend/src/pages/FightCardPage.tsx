@@ -1,12 +1,14 @@
 // src/pages/FightCardPage.tsx
 import React, { useState, useEffect } from "react";
-import { Link, useLocation } from "react-router-dom";
-import { fightCards } from "../data/fights";
-import { upcomingEvents } from "../data/events";
+import { Link, useLocation, useNavigate } from "react-router-dom";
 import { FightCard, Fight } from "../types/Fight";
-import { PicksService } from "../services/PicksService";
+import { Pick } from "../types/Picks";
+import { PicksApiService } from "../services/PicksApiService";
+import { FightsApiService } from "../services/FightsApiService";
 import { TimeService } from "../services/TimeService";
 import { useAuth } from "../context/AuthContext";
+import { EventsApiService } from "../services/EventsApiService";
+import { Event } from "../types/Events";
 
 const FightCardPage: React.FC = () => {
   // State to track user's picks
@@ -14,89 +16,113 @@ const FightCardPage: React.FC = () => {
   const [mainCard, setMainCard] = useState<FightCard | null>(null);
   const [prelimCard, setPrelimCard] = useState<FightCard | null>(null);
   const [hasExistingPicks, setHasExistingPicks] = useState(false);
+  const [event, setEvent] = useState<Event | null>(null);
 
   // Time-related states
   const [canSubmitPicks, setCanSubmitPicks] = useState(true);
   const [timeRemaining, setTimeRemaining] = useState("");
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
-  // Get the event ID from navigation state
+  // Get the event ID from location state
   const location = useLocation();
+  const navigate = useNavigate();
   const eventId = location.state?.eventId;
 
   // Get current user from auth context
-  const { user } = useAuth();
+  const { user, isAuthenticated } = useAuth();
 
-  // Load the correct fight cards when component mounts
+  // Load event, fight cards, and user picks
   useEffect(() => {
-    if (eventId) {
-      // Load main card
-      if (fightCards[eventId]) {
-        setMainCard(fightCards[eventId]);
-      }
+    if (!eventId) {
+      setError("No event selected");
+      setIsLoading(false);
+      return;
+    }
 
-      // Load preliminary card if it exists
-      const prelimKey = `${eventId}_prelims`;
-      if (fightCards[prelimKey]) {
-        setPrelimCard(fightCards[prelimKey]);
-      }
+    if (!isAuthenticated) {
+      setError("Please log in to view this page");
+      setIsLoading(false);
+      return;
+    }
 
-      // Check for existing picks
-      if (user) {
-        const existingPicks = PicksService.getPicks(user.username, eventId);
-        if (existingPicks) {
-          setPicks(existingPicks.picks);
-          setHasExistingPicks(true);
-        }
-      }
+    let isMounted = true;
 
-      // Check event time and set pick submission status
-      const event = upcomingEvents.find((e) => e.id === eventId);
-      if (event) {
-        // Initial check
-        const canSubmit = TimeService.canSubmitPicks(event);
+    const fetchData = async () => {
+      try {
+        setIsLoading(true);
+
+        // Fetch event details
+        const eventData = await EventsApiService.getEvent(eventId);
+        if (!isMounted) return;
+        setEvent(eventData);
+
+        // Check event time and set pick submission status
+        const canSubmit = TimeService.canSubmitPicks(eventData);
         setCanSubmitPicks(canSubmit);
 
         // Update time remaining
-        const updateTimeRemaining = () => {
-          const remaining = TimeService.getTimeUntilPicksLock(event);
-          setTimeRemaining(remaining);
+        const remaining = TimeService.getTimeUntilPicksLock(eventData);
+        setTimeRemaining(remaining);
 
-          // Stop interval if picks are locked
-          if (remaining === "Picks Locked") {
-            setCanSubmitPicks(false);
+        // Fetch fights for this event
+        const mainCardData = await FightsApiService.getEventFights(eventId);
+        if (!isMounted) return;
+        setMainCard(mainCardData);
+
+        // Fetch prelim fights if available
+        try {
+          const prelimCardData = await FightsApiService.getEventPrelimFights(
+            eventId
+          );
+          if (prelimCardData && isMounted) {
+            setPrelimCard(prelimCardData);
           }
-        };
+        } catch (err) {
+          console.log("No prelim card available");
+        }
 
-        // Initial update
-        updateTimeRemaining();
+        // Fetch user's picks if any
+        const userPicks = await PicksApiService.getUserPicks(eventId);
+        if (userPicks && isMounted) {
+          setPicks(userPicks.picks);
+          setHasExistingPicks(true);
+        }
 
-        // Set up interval to update time remaining
-        const timerId = setInterval(updateTimeRemaining, 60000); // Update every minute
-
-        // Clean up interval
-        return () => clearInterval(timerId);
+        if (isMounted) {
+          setError(null);
+          setIsLoading(false);
+        }
+      } catch (err) {
+        console.error("Error fetching fight card data:", err);
+        if (isMounted) {
+          setError("Failed to load fight card. Please try again later.");
+          setIsLoading(false);
+        }
       }
-    }
-  }, [eventId, user]);
+    };
 
-  // If no event or user is selected, show an error
-  if (!mainCard || !user) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-blue-50 to-indigo-100">
-        <div className="text-center">
-          <h1 className="text-3xl font-bold text-gray-900 mb-4">
-            {!mainCard ? "No Event Selected" : "Please Log In"}
-          </h1>
-          <Link
-            to="/events"
-            className="text-indigo-600 hover:text-indigo-800 underline"
-          >
-            Return to Events
-          </Link>
-        </div>
-      </div>
-    );
-  }
+    fetchData();
+
+    // Set up interval to update time remaining
+    const timerId = setInterval(() => {
+      if (event && isMounted) {
+        const remaining = TimeService.getTimeUntilPicksLock(event);
+        setTimeRemaining(remaining);
+
+        // Stop interval if picks are locked
+        if (remaining === "Picks Locked") {
+          setCanSubmitPicks(false);
+        }
+      }
+    }, 60000); // Update every minute
+
+    // Clean up interval and set isMounted to false
+    return () => {
+      clearInterval(timerId);
+      isMounted = false;
+    };
+  }, [eventId, isAuthenticated]);
 
   // Handle fighter selection
   const handleFighterSelect = (fightId: string, fighterId: string) => {
@@ -136,6 +162,8 @@ const FightCardPage: React.FC = () => {
 
   // Calculate completion status
   const calculateCompletionStatus = () => {
+    if (!mainCard) return { completedPicks: 0, totalFights: 0 };
+
     const mainCardFights = mainCard.fights.length;
     const prelimFights = prelimCard ? prelimCard.fights.length : 0;
     const totalFights = mainCardFights + prelimFights;
@@ -148,14 +176,74 @@ const FightCardPage: React.FC = () => {
   };
 
   // Handle submission of picks
-  const handleSubmitPicks = () => {
-    if (!canSubmitPicks || !user || !eventId) return;
+  const handleSubmitPicks = async () => {
+    if (!canSubmitPicks || !eventId) return;
 
-    PicksService.savePicks(user.username, eventId, picks);
-    setHasExistingPicks(true);
+    try {
+      setIsLoading(true);
+      await PicksApiService.submitPicks(eventId, picks);
+      setHasExistingPicks(true);
+      setError(null);
+    } catch (err) {
+      console.error("Error submitting picks:", err);
+      setError("Failed to submit picks. Please try again.");
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   const { completedPicks, totalFights } = calculateCompletionStatus();
+
+  // If still loading, show a loading spinner
+  if (isLoading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-blue-50 to-indigo-100">
+        <div className="text-center">
+          <h1 className="text-2xl font-bold text-gray-900 mb-4">
+            Loading fight card...
+          </h1>
+        </div>
+      </div>
+    );
+  }
+
+  // If there's an error, show an error message
+  if (error) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-blue-50 to-indigo-100">
+        <div className="text-center">
+          <h1 className="text-3xl font-bold text-gray-900 mb-4">{error}</h1>
+          <Link
+            to="/events"
+            className="text-indigo-600 hover:text-indigo-800 underline"
+          >
+            Return to Events
+          </Link>
+        </div>
+      </div>
+    );
+  }
+
+  // If no event or user is selected, show a message
+  if (!mainCard || !isAuthenticated) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-blue-50 to-indigo-100">
+        <div className="text-center">
+          <h1 className="text-3xl font-bold text-gray-900 mb-4">
+            {!mainCard
+              ? "No fights found for this event"
+              : "Please log in to make predictions"}
+          </h1>
+          <Link
+            to="/events"
+            className="text-indigo-600 hover:text-indigo-800 underline"
+          >
+            Return to Events
+          </Link>
+        </div>
+      </div>
+    );
+  }
 
   // Render fight card section
   const renderFightCard = (card: FightCard) => (
@@ -171,7 +259,7 @@ const FightCardPage: React.FC = () => {
           <div
             key={fight.id}
             className={`bg-white rounded-lg shadow-md p-6 border border-gray-200 ${
-              !canSubmitPicks ? "opacity-50" : ""
+              !canSubmitPicks ? "opacity-75" : ""
             }`}
           >
             <div className="text-lg font-medium text-gray-600 mb-4">
@@ -282,6 +370,11 @@ const FightCardPage: React.FC = () => {
           <h1 className="text-4xl font-extrabold text-gray-900">Punch Picks</h1>
         </div>
 
+        {/* Event Title */}
+        <h2 className="text-3xl font-bold text-center mb-4">
+          {event?.title || "Fight Card"}
+        </h2>
+
         {/* Time Remaining Display */}
         {canSubmitPicks && (
           <div className="text-center mb-4 text-gray-600">
@@ -327,9 +420,3 @@ const FightCardPage: React.FC = () => {
 };
 
 export default FightCardPage;
-
-// Type for picks to satisfy TypeScript
-interface Pick {
-  fighterId: string;
-  method: string;
-}
