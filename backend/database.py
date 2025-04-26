@@ -2,8 +2,8 @@ from sqlalchemy import create_engine
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
 
-# SQLite connection string - points to the fights.db file
-SQLALCHEMY_DATABASE_URL = "sqlite:///fights.db"
+# SQLite connection string
+SQLALCHEMY_DATABASE_URL = "sqlite:///./punch_picks.db"
 
 # Create SQLAlchemy engine
 engine = create_engine(

@@ -1,16 +1,16 @@
 from fastapi import Depends, FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.orm import Session
-from typing import List
 
-import models, schemas
+import models
 from database import engine, get_db
+from routers import fighters, events, fights, import_data
 
 # Create database tables
 models.Base.metadata.create_all(bind=engine)
 
 # Initialize FastAPI app
-app = FastAPI(title="Punch Picks API")
+app = FastAPI(title="Punch Picks API", description="API for the Punch Picks MMA prediction application")
 
 # Configure CORS
 origins = [
@@ -26,21 +26,35 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Test endpoint
+# Include routers
+app.include_router(fighters.router, prefix="/api")
+app.include_router(events.router, prefix="/api")
+app.include_router(fights.router, prefix="/api")
+app.include_router(import_data.router, prefix="/api")
+
+# Root endpoint
 @app.get("/")
 def read_root():
-    return {"Sup": "Hoe"}
+    return {
+        "message": "Welcome to the Punch Picks API",
+        "version": "1.0.0",
+        "docs_url": "/docs",
+        "endpoints": {
+            "fighters": "/api/fighters",
+            "events": "/api/events",
+            "fights": "/api/fights",
+            "import": "/api/import"
+        }
+    }
 
-# GET endpoint to retrieve all fights
-@app.get("/fights/", response_model=List[schemas.Fight])
-def read_fights(skip: int = 0, limit: int = 100, db: Session = Depends(get_db)):
-    fights = db.query(models.Fight).offset(skip).limit(limit).all()
-    return fights
-
-# GET endpoint to retrieve a specific fight by ID
-@app.get("/fights/{fight_id}", response_model=schemas.Fight)
-def read_fight(fight_id: str, db: Session = Depends(get_db)):
-    fight = db.query(models.Fight).filter(models.Fight.fight_id == fight_id).first()
-    if fight is None:
-        raise HTTPException(status_code=404, detail="Fight not found")
-    return fight
+# Health check endpoint
+@app.get("/health")
+def health_check():
+    try:
+        # Get a database session
+        db = next(get_db())
+        # Try a simple query
+        db.execute("SELECT 1").fetchall()
+        return {"status": "healthy", "database": "connected"}
+    except Exception as e:
+        return {"status": "unhealthy", "database": "disconnected", "error": str(e)}
