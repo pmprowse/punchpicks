@@ -24,3 +24,9 @@ dist-ssr
 *.sw?
 
 src/data/
+
+
+# Backend
+__pycache__/
+venv/
+*.db
