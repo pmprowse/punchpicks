@@ -1,8 +1,24 @@
-from sqlalchemy import Boolean, Column, ForeignKey, Integer, String, Text, DateTime, Date
+from sqlalchemy import Boolean, Column, ForeignKey, Integer, String, Text, DateTime, Date, UniqueConstraint
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
+from sqlalchemy.types import TypeDecorator, VARCHAR
+import json
 
 from database import Base
+
+# JSON type for SQLite (which doesn't natively support JSON)
+class JSONEncodedDict(TypeDecorator):
+    impl = VARCHAR
+    
+    def process_bind_param(self, value, dialect):
+        if value is not None:
+            value = json.dumps(value)
+        return value
+        
+    def process_result_value(self, value, dialect):
+        if value is not None:
+            value = json.loads(value)
+        return value
 
 class Fighter(Base):
     __tablename__ = "fighters"
@@ -26,6 +42,8 @@ class Event(Base):
     date = Column(Date)
     location = Column(String)
     description = Column(Text, nullable=True)
+    start_date = Column(DateTime(timezone=True))  # When the event starts and picks lock
+    is_active = Column(Boolean, default=True)     # Whether this event accepts picks
     
     # Relationships
     fights = relationship("Fight", back_populates="event", cascade="all, delete-orphan")
@@ -91,3 +109,21 @@ class Result(Base):
     # Relationships
     fight = relationship("Fight", back_populates="result")
     winner = relationship("Fighter")
+
+class UserEventPicks(Base):
+    __tablename__ = "user_event_picks"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"))
+    event_id = Column(Integer, ForeignKey("events.id"))
+    submitted_at = Column(DateTime(timezone=True), server_default=func.now())
+    picks = Column(JSONEncodedDict)  # Stores all picks for the event
+    
+    # Relationships
+    user = relationship("User")
+    event = relationship("Event")
+    
+    # Composite unique constraint to ensure one entry per user per event
+    __table_args__ = (
+        UniqueConstraint('user_id', 'event_id', name='uix_user_event'),
+    )

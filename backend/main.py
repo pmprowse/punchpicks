@@ -4,7 +4,7 @@ from sqlalchemy.orm import Session
 
 import models
 from database import engine, get_db
-from routers import fighters, events, fights, import_data
+from routers import fighters, events, fights, import_data, user_picks
 
 # Create database tables
 models.Base.metadata.create_all(bind=engine)
@@ -31,6 +31,7 @@ app.include_router(fighters.router, prefix="/api")
 app.include_router(events.router, prefix="/api")
 app.include_router(fights.router, prefix="/api")
 app.include_router(import_data.router, prefix="/api")
+app.include_router(user_picks.router, prefix="/api")
 
 # Root endpoint
 @app.get("/")
@@ -43,7 +44,8 @@ def read_root():
             "fighters": "/api/fighters",
             "events": "/api/events",
             "fights": "/api/fights",
-            "import": "/api/import"
+            "import": "/api/import",
+            "picks": "/api/picks"
         }
     }
 
