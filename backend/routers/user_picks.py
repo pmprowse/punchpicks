@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status, Request
 from sqlalchemy.orm import Session
 from typing import List, Dict, Any, Optional
 from pydantic import BaseModel
@@ -31,17 +31,32 @@ class EventPicksResponse(BaseModel):
     class Config:
         orm_mode = True
 
+# Helper function to get current user from session
+def get_current_user(request: Request, db: Session):
+    session_id = request.cookies.get("session")
+    if not session_id:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+    
+    user = db.query(models.User).filter(models.User.username == session_id).first()
+    if not user:
+        raise HTTPException(status_code=401, detail="Invalid session")
+    
+    return user
+
 # Get current user's picks for an event
 @router.get("/event/{event_id}", response_model=EventPicksResponse)
 def get_user_picks(
-    event_id: int, 
-    user_id: int = 1,  # Hardcoded user ID for now - replace with authentication
+    event_id: int,
+    request: Request,
     db: Session = Depends(get_db)
 ):
     """
     Get a user's picks for a specific event.
     This will return an empty list if no picks have been submitted yet.
     """
+    # Get current user from session
+    user = get_current_user(request, db)
+    
     # Check if event exists
     event = db.query(models.Event).filter(models.Event.id == event_id).first()
     if not event:
@@ -49,7 +64,7 @@ def get_user_picks(
     
     # Get user's picks
     user_picks = db.query(models.UserEventPicks).filter(
-        models.UserEventPicks.user_id == user_id,
+        models.UserEventPicks.user_id == user.id,
         models.UserEventPicks.event_id == event_id
     ).first()
     
@@ -68,7 +83,7 @@ def get_user_picks(
 def submit_user_picks(
     event_id: int,
     picks_data: List[FightPick],
-    user_id: int = 1,  # Hardcoded user ID for now - replace with authentication
+    request: Request,
     db: Session = Depends(get_db)
 ):
     """
@@ -76,21 +91,26 @@ def submit_user_picks(
     - Each user can only have one set of picks per event
     - Picks cannot be changed after the event start date
     """
+    # Get current user from session
+    user = get_current_user(request, db)
+    
     # Check if event exists
     event = db.query(models.Event).filter(models.Event.id == event_id).first()
     if not event:
         raise HTTPException(status_code=404, detail="Event not found")
     
     # Check if event is active
-    if not event.is_active:
+    if getattr(event, 'is_active', True) is False:
         raise HTTPException(status_code=400, detail="Event is not active")
     
     # Check if event has started
-    if event.start_date and event.start_date < datetime.now():
+    if getattr(event, 'start_date', None) and event.start_date < datetime.now():
         raise HTTPException(status_code=400, detail="Event has already started - picks are locked")
     
     # Validate that all fight_ids belong to this event
-    event_fight_ids = [fight.fight_id for fight in event.fights]
+    event_fights = db.query(models.Fight).filter(models.Fight.event_id == event_id).all()
+    event_fight_ids = [fight.fight_id for fight in event_fights]
+    
     for pick in picks_data:
         if pick.fight_id not in event_fight_ids:
             raise HTTPException(status_code=400, detail=f"Fight {pick.fight_id} does not belong to this event")
@@ -112,7 +132,7 @@ def submit_user_picks(
     
     # Check if user already has picks for this event
     existing_picks = db.query(models.UserEventPicks).filter(
-        models.UserEventPicks.user_id == user_id,
+        models.UserEventPicks.user_id == user.id,
         models.UserEventPicks.event_id == event_id
     ).first()
     
@@ -126,7 +146,7 @@ def submit_user_picks(
     else:
         # Create new picks
         new_picks = models.UserEventPicks(
-            user_id=user_id,
+            user_id=user.id,
             event_id=event_id,
             picks=picks_list
         )

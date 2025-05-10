@@ -9,7 +9,7 @@ export class PicksApiService {
     try {
       const response = await fetch(`${API_URL}/picks/event/${eventId}`, {
         method: "GET",
-        credentials: "include",
+        credentials: "include", // Includes cookies for authentication
         headers: {
           "Content-Type": "application/json",
         },
@@ -59,11 +59,6 @@ export class PicksApiService {
       };
     } catch (error) {
       console.error("Error fetching user picks:", error);
-      // Fall back to local storage if API fails
-      if (localStorage) {
-        const username = "current_user"; // Use a generic key or get from auth context
-        return this.getPicks(username, eventId);
-      }
       return null;
     }
   }
@@ -83,7 +78,7 @@ export class PicksApiService {
 
       const response = await fetch(`${API_URL}/picks/event/${eventId}`, {
         method: "POST",
-        credentials: "include",
+        credentials: "include", // Includes cookies for authentication
         headers: {
           "Content-Type": "application/json",
         },
@@ -99,10 +94,6 @@ export class PicksApiService {
 
       const data = await response.json();
 
-      // Also save to local storage as backup
-      const username = "current_user"; // Use a generic key or get from auth context
-      this.savePicks(username, eventId, picks);
-
       // Return the updated picks in our format
       return {
         eventId: data.event_id.toString(),
@@ -114,47 +105,5 @@ export class PicksApiService {
       console.error("Error submitting picks:", error);
       throw error;
     }
-  }
-
-  // Get picks from local storage
-  static getPicks(username: string, eventId: string): UserEventPicks | null {
-    const key = this.getStorageKey(username, eventId);
-    const picksJson = localStorage.getItem(key);
-    return picksJson ? JSON.parse(picksJson) : null;
-  }
-
-  // Save picks to local storage as backup
-  static savePicks(
-    username: string,
-    eventId: string,
-    picks: Record<string, Pick>
-  ): void {
-    const pickData: UserEventPicks = {
-      eventId,
-      timestamp: new Date().toISOString(),
-      picks,
-      isSubmitted: true,
-    };
-
-    localStorage.setItem(
-      this.getStorageKey(username, eventId),
-      JSON.stringify(pickData)
-    );
-  }
-
-  // Check if user has submitted picks for an event
-  static hasSubmittedPicks(username: string, eventId: string): boolean {
-    return this.getPicks(username, eventId) !== null;
-  }
-
-  // Remove picks for a specific user and event
-  static removePicks(username: string, eventId: string): void {
-    const key = this.getStorageKey(username, eventId);
-    localStorage.removeItem(key);
-  }
-
-  // Generate a unique key for storing picks
-  private static getStorageKey(username: string, eventId: string): string {
-    return `userPicks_${username}_${eventId}`;
   }
 }

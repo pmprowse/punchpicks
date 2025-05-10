@@ -17,11 +17,16 @@ const FightCardPage: React.FC = () => {
   const [prelimCard, setPrelimCard] = useState<FightCard | null>(null);
   const [hasExistingPicks, setHasExistingPicks] = useState(false);
   const [event, setEvent] = useState<Event | null>(null);
+  const [submitMessage, setSubmitMessage] = useState<{
+    type: "success" | "error";
+    text: string;
+  } | null>(null);
 
   // Time-related states
   const [canSubmitPicks, setCanSubmitPicks] = useState(true);
   const [timeRemaining, setTimeRemaining] = useState("");
   const [isLoading, setIsLoading] = useState(true);
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   // Get the event ID from location state
@@ -60,11 +65,6 @@ const FightCardPage: React.FC = () => {
         // Check event time and set pick submission status
         const canSubmit = TimeService.canSubmitPicks(eventData);
         setCanSubmitPicks(canSubmit);
-
-        // Add your debug logs here
-        console.log("Current time:", new Date().toISOString());
-        console.log("Event start time:", eventData.startTime);
-        console.log("Can submit picks:", TimeService.canSubmitPicks(eventData));
 
         // Update time remaining
         const remaining = TimeService.getTimeUntilPicksLock(eventData);
@@ -133,6 +133,9 @@ const FightCardPage: React.FC = () => {
   const handleFighterSelect = (fightId: string, fighterId: string) => {
     if (!canSubmitPicks) return;
 
+    // Clear any previous submission messages
+    setSubmitMessage(null);
+
     setPicks({
       ...picks,
       [fightId]: {
@@ -145,6 +148,9 @@ const FightCardPage: React.FC = () => {
   // Handle method selection
   const handleMethodSelect = (fightId: string, method: string) => {
     if (!canSubmitPicks || !picks[fightId]?.fighterId) return;
+
+    // Clear any previous submission messages
+    setSubmitMessage(null);
 
     setPicks({
       ...picks,
@@ -185,15 +191,26 @@ const FightCardPage: React.FC = () => {
     if (!canSubmitPicks || !eventId) return;
 
     try {
-      setIsLoading(true);
+      setIsSubmitting(true);
       await PicksApiService.submitPicks(eventId, picks);
       setHasExistingPicks(true);
       setError(null);
+      setSubmitMessage({
+        type: "success",
+        text: "Your picks have been saved successfully!",
+      });
+
+      // Auto-scroll to top to show success message
+      window.scrollTo({ top: 0, behavior: "smooth" });
     } catch (err) {
       console.error("Error submitting picks:", err);
       setError("Failed to submit picks. Please try again.");
+      setSubmitMessage({
+        type: "error",
+        text: "There was a problem saving your picks. Please try again.",
+      });
     } finally {
-      setIsLoading(false);
+      setIsSubmitting(false);
     }
   };
 
@@ -375,15 +392,37 @@ const FightCardPage: React.FC = () => {
           <h1 className="text-4xl font-extrabold text-gray-900">Punch Picks</h1>
         </div>
 
+        {/* Submission Message */}
+        {submitMessage && (
+          <div
+            className={`mb-6 p-4 rounded ${
+              submitMessage.type === "success"
+                ? "bg-green-100 text-green-800 border border-green-300"
+                : "bg-red-100 text-red-800 border border-red-300"
+            }`}
+          >
+            {submitMessage.text}
+          </div>
+        )}
+
         {/* Event Title */}
         <h2 className="text-3xl font-bold text-center mb-4">
           {event?.title || "Fight Card"}
         </h2>
 
+        {/* User Info */}
+        <div className="text-center mb-4 text-gray-700">
+          Making picks as: <strong>{user?.username}</strong>
+        </div>
+
         {/* Time Remaining Display */}
-        {canSubmitPicks && (
+        {canSubmitPicks ? (
           <div className="text-center mb-4 text-gray-600">
-            Time until picks lock: {timeRemaining}
+            Time until picks lock: <strong>{timeRemaining}</strong>
+          </div>
+        ) : (
+          <div className="text-center mb-4 text-red-600 font-bold">
+            Picks are locked! Event has started.
           </div>
         )}
 
@@ -408,15 +447,45 @@ const FightCardPage: React.FC = () => {
               completedPicks === totalFights && canSubmitPicks
                 ? "bg-indigo-600 hover:bg-indigo-700"
                 : "bg-gray-400 cursor-not-allowed"
-            } text-white font-bold py-3 px-8 rounded-lg text-lg shadow-lg transition duration-300`}
-            disabled={completedPicks !== totalFights || !canSubmitPicks}
+            } text-white font-bold py-3 px-8 rounded-lg text-lg shadow-lg transition duration-300 flex items-center`}
+            disabled={
+              completedPicks !== totalFights || !canSubmitPicks || isSubmitting
+            }
             onClick={handleSubmitPicks}
           >
-            {canSubmitPicks
-              ? hasExistingPicks
-                ? "Update Picks"
-                : "Submit Picks"
-              : "Picks Locked"}
+            {isSubmitting ? (
+              <>
+                <svg
+                  className="animate-spin -ml-1 mr-3 h-5 w-5 text-white"
+                  xmlns="http://www.w3.org/2000/svg"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                >
+                  <circle
+                    className="opacity-25"
+                    cx="12"
+                    cy="12"
+                    r="10"
+                    stroke="currentColor"
+                    strokeWidth="4"
+                  ></circle>
+                  <path
+                    className="opacity-75"
+                    fill="currentColor"
+                    d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+                  ></path>
+                </svg>
+                Saving...
+              </>
+            ) : canSubmitPicks ? (
+              hasExistingPicks ? (
+                "Update Picks"
+              ) : (
+                "Submit Picks"
+              )
+            ) : (
+              "Picks Locked"
+            )}
           </button>
         </div>
       </div>
