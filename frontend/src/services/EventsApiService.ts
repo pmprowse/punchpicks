@@ -86,7 +86,7 @@ export class EventsApiService {
       // ALWAYS set to a future time to ensure picks aren't locked
       // For today's events, set to 11 PM
       const startTime = new Date();
-      startTime.setHours(23, 0, 0, 0); // Set to 11 PM today
+      startTime.setHours(12, 15, 0, 0); // Set to 11 PM today
 
       // Set end time to 8 hours after start time
       const endTime = new Date(startTime);

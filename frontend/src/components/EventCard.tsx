@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from "react";
-import { useNavigate } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import { Event } from "../types/Events";
 import { FightsApiService } from "../services/FightsApiService";
 
@@ -80,6 +80,14 @@ const EventCard: React.FC<EventCardProps> = ({ event }) => {
         >
           Make Predictions
         </button>
+        {event.endTime && new Date() > new Date(event.endTime) && (
+          <Link
+            to={`/leaderboard/${event.id}`}
+            className="w-full mt-4 bg-green-500 hover:bg-green-600 text-white font-bold py-2 px-4 rounded transition duration-300 inline-block text-center"
+          >
+            View Leaderboard
+          </Link>
+        )}
       </div>
     </div>
   );

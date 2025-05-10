@@ -6,6 +6,7 @@ import EventsPage from "./pages/EventsPage";
 import FightCardPage from "./pages/FightCardPage";
 import ProtectedRoute from "./components/ProtectedRoute/ProtectedRoute";
 import { AuthProvider } from "./context/AuthContext";
+import LeaderboardPage from "./pages/LeaderboardPage";
 
 const App: React.FC = () => {
   return (
@@ -18,6 +19,14 @@ const App: React.FC = () => {
             element={
               <ProtectedRoute>
                 <EventsPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/leaderboard/:eventId"
+            element={
+              <ProtectedRoute>
+                <LeaderboardPage />
               </ProtectedRoute>
             }
           />
